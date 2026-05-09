@@ -1,16 +1,5 @@
 [
-  {
-    "Id": "3dd7410b-b2d6-42f0-9559-624d7796e519",
-    "ProfileName": "Varsay\u0131lan",
-    "Resolution": "1920x1080",
-    "Bitrate": 4000,
-    "Fps": 30
-  },
-  {
-    "Id": "00db2c1f-ca86-4b7a-b56d-8808e539118b",
-    "ProfileName": "D\u00FC\u015F\u00FCk Boyut",
-    "Resolution": "1280x720",
-    "Bitrate": 1500,
-    "Fps": 24
-  }
+  {},
+  {},
+  {}
 ]

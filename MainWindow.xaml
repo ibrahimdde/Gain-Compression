@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Gain Compression" Height="620" Width="600"
-        WindowStartupLocation="CenterScreen" Background="#f3f4f6" Loaded="Window_Loaded">
+        WindowStartupLocation="CenterScreen" Background="#f3f4f6" 
+        Loaded="Window_Loaded" AllowDrop="True" Drop="Pencere_DosyaBirakildiginda">
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -47,13 +48,13 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Kayıtlı Profil:" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="Normal"/>
-                    <ComboBox x:Name="cmbProfiles" Grid.Column="1" Margin="0,0,10,0" SelectionChanged="CmbProfiles_SelectionChanged" DisplayMemberPath="ProfileName" FontWeight="Normal"/>
+                    <ComboBox x:Name="cmbProfiles" Grid.Column="1" Margin="0,0,10,0" SelectionChanged="CmbProfiles_SelectionChanged" DisplayMemberPath="ProfilAdi" FontWeight="Normal"/>
                     <Button Content="Yeni" Grid.Column="2" Width="40" Margin="0,0,5,0" Click="BtnNewProfile_Click" FontWeight="Normal"/>
                     <Button Content="Kaydet" Grid.Column="3" Width="60" Margin="0,0,5,0" Click="BtnSaveProfile_Click" FontWeight="Normal"/>
                     <Button Content="Sil" Grid.Column="4" Width="40" Click="BtnDeleteProfile_Click" Foreground="Red" FontWeight="Normal"/>
                 </Grid>
 
-                <UniformGrid Columns="2" Rows="4" TextElement.FontWeight="Normal">
+                <UniformGrid Columns="2" Rows="6" TextElement.FontWeight="Normal">
                     <TextBlock Text="Profil Adı:" VerticalAlignment="Center" Margin="5"/>
                     <TextBox x:Name="txtProfileName" Margin="5" VerticalContentAlignment="Center"/>
 
@@ -65,6 +66,21 @@
 
                     <TextBlock Text="FPS (Örn: 30):" VerticalAlignment="Center" Margin="5"/>
                     <TextBox x:Name="txtFps" Margin="5" VerticalContentAlignment="Center"/>
+
+                    <TextBlock Text="Video Formatı (Codec):" VerticalAlignment="Center" Margin="5"/>
+                    <ComboBox x:Name="cmbCodec" Margin="5" SelectedIndex="0">
+                        <ComboBoxItem Content="H264 (libx264)"/>
+                        <ComboBoxItem Content="H265 (libx265)"/>
+                        <ComboBoxItem Content="AV1 (libaom-av1)"/>
+                    </ComboBox>
+
+                    <TextBlock Text="Sıkıştırma Hızı (Preset):" VerticalAlignment="Center" Margin="5"/>
+                    <ComboBox x:Name="cmbPreset" Margin="5" SelectedIndex="2">
+                        <ComboBoxItem Content="Çok Hızlı (ultrafast)"/>
+                        <ComboBoxItem Content="Hızlı (fast)"/>
+                        <ComboBoxItem Content="Normal (medium)"/>
+                        <ComboBoxItem Content="Yavaş (slow)"/>
+                    </ComboBox>
                 </UniformGrid>
             </StackPanel>
         </GroupBox>

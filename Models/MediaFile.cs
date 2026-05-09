@@ -2,52 +2,37 @@ using System.IO;
 
 namespace FfmpegWrapper.Models
 {
-    // Abstraction (Soyutlama) ve Base Class (Temel Sınıf)
-    public abstract class MediaFile
+    // Ortak özellikleri taşıyan "Ana Sınıf" (Temel Sınıf)
+    public class MediaFile
     {
-        // Gizli (Private) Alanlar
-        private string _filePath;
-        private string _fileName;
-        private string _fileExtension;
-        private long _sizeInBytes;
+        // Özellikleri (Alanları) herkesin erişebileceği şekilde public (açık) yapıyoruz.
+        // Böylece kullanımı çok daha kolay oluyor.
+        public string DosyaYolu;
+        public string DosyaAdi;
+        public string Uzanti;
+        public long Boyut;
 
-        // Dışarıdan sadece okumaya açık, içeriden değiştirilebilir (Encapsulation)
-        public string FilePath
+        // Kurucu Metot: Yeni dosya oluşturulurken dosya yolunu (nerede olduğunu) istiyoruz.
+        public MediaFile(string yol)
         {
-            get { return _filePath; }
-            protected set { _filePath = value; }
+            // Dosya bilgisayarda gerçekten var mı diye kontrol ediyoruz.
+            if (!File.Exists(yol))
+            {
+                throw new FileNotFoundException("Dosya bulunamadı.");
+            }
+
+            // Path sınıfı, bir dosya yolundan adı ve uzantıyı kolayca ayıklamamızı sağlar.
+            DosyaYolu = yol;
+            DosyaAdi = Path.GetFileNameWithoutExtension(yol);
+            Uzanti = Path.GetExtension(yol);
+            Boyut = new FileInfo(yol).Length; // Dosyanın bayt cinsinden büyüklüğü
         }
 
-        public string FileName
+        // Medya dosyasının özetini dönen sanal (virtual) metot.
+        // İsteyen sınıflar (örneğin VideoFile) bunu değiştirip kendine göre uyarlayabilir.
+        public virtual string AciklamaGetir()
         {
-            get { return _fileName; }
-            protected set { _fileName = value; }
+            return $"Dosya: {DosyaAdi}";
         }
-
-        public string FileExtension
-        {
-            get { return _fileExtension; }
-            protected set { _fileExtension = value; }
-        }
-
-        public long SizeInBytes
-        {
-            get { return _sizeInBytes; }
-            protected set { _sizeInBytes = value; }
-        }
-
-        protected MediaFile(string filePath)
-        {
-            if (!File.Exists(filePath))
-                throw new FileNotFoundException("Dosya bulunamadı.", filePath);
-
-            FilePath = filePath;
-            FileName = Path.GetFileNameWithoutExtension(filePath);
-            FileExtension = Path.GetExtension(filePath);
-            SizeInBytes = new FileInfo(filePath).Length;
-        }
-
-        // Polymorphism (Çok Biçimlilik) için sanal metot
-        public abstract string GetMediaDescription();
     }
 }

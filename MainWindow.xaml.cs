@@ -1,9 +1,7 @@
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Threading;
-using System.Diagnostics;
 using Microsoft.Win32;
 using FfmpegWrapper.Models;
 using FfmpegWrapper.Services;
@@ -12,135 +10,235 @@ namespace FfmpegWrapper
 {
     public partial class MainWindow : Window
     {
-        private readonly ProfileManager _profileManager;
-        private readonly FfmpegEngine _ffmpegEngine;
-        private VideoFile _currentVideo;
-        private string _outputDirectory;
-        private Stopwatch _stopwatch;
-        private DispatcherTimer _timer;
+        // Programımızda kullanacağımız "Motorlar" (Servisler)
+        private ProfileManager _profilYoneticisi;
+        private FfmpegEngine _videoMotoru;
+        
+        // Seçilen videoyu ve klasörü hafızada tutmak için değişkenler
+        private VideoFile _secilenVideo;
+        private string _secilenKlasor;
+        
+        // İşlem süresini hesaplamak için saati tuttuğumuz değişken
+        private DateTime _islemBaslangicZamani;
 
         public MainWindow()
         {
             InitializeComponent();
-            _profileManager = new ProfileManager();
-            _ffmpegEngine = new FfmpegEngine();
+            
+            // Motorları çalışmaya hazır hale getiriyoruz (Yeni birer kopyasını oluşturuyoruz)
+            _profilYoneticisi = new ProfileManager();
+            _videoMotoru = new FfmpegEngine();
 
-            _ffmpegEngine.OnProgressChanged += FfmpegEngine_OnProgressChanged;
-            _ffmpegEngine.OnLogReceived += FfmpegEngine_OnLogReceived;
+            // Video motoru arka planda çalışırken bize haber verebilmesi için olayları (Event) dinliyoruz
+            _videoMotoru.İlerlemeDurumuDegistiginde += Motor_IlerlemeDurumuDegistiginde;
+            _videoMotoru.BilgiMesajiGeldiginde += Motor_BilgiMesajiGeldiginde;
 
-            _stopwatch = new Stopwatch();
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _timer.Tick += (s, e) => txtTime.Text = $"Geçen Süre: {_stopwatch.Elapsed:hh\\:mm\\:ss}";
-
-            LoadProfilesToUI();
+            // Ekran açılır açılmaz profilleri ComboBox'a (açılır listeye) dolduruyoruz
+            ProfilleriEkranaYukle();
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            var downloader = new FfmpegDownloader();
+            // Program ilk açıldığında, internetten FFmpeg indirme motorunu hazırlıyoruz
+            FfmpegDownloader indirici = new FfmpegDownloader();
             
-            downloader.OnDownloadProgressChanged += (percentage) =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    progressBar.Value = percentage;
-                    txtPercentage.Text = $"%{percentage:F1}";
-                });
-            };
+            indirici.IndirmeYuzdesiDegistiginde += Indirici_IndirmeYuzdesiDegistiginde;
+            indirici.DurumMesajiGeldiginde += Indirici_DurumMesajiGeldiginde;
 
-            downloader.OnDownloadStatusChanged += (status) =>
-            {
-                Dispatcher.Invoke(() => LogToUI(status));
-            };
-
-            btnStart.IsEnabled = false; // İndirme bitene kadar her şeyi kitle
+            // İndirme işlemi bitene kadar butonları kilitliyoruz ki kullanıcı acele edip hata almasın
+            btnStart.IsEnabled = false;
             grpFileOps.IsEnabled = false;
             grpProfileOps.IsEnabled = false;
 
             try
             {
-                await downloader.DownloadFfmpegIfNeededAsync();
+                // İndirme işlemini başlat (Eğer zaten varsa hemen bitecek)
+                await indirici.FfmpegYoksaIndirAsync();
             }
-            catch (Exception ex)
+            catch (Exception hata)
             {
-                MessageBox.Show("FFMPEG indirilirken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.\n\nDetay: " + ex.Message, "İndirme Hatası", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("İndirme sırasında bir hata oluştu: " + hata.Message);
             }
-            finally
-            {
-                btnStart.IsEnabled = true; // Tüm tuşları tekrar aktif et
-                grpFileOps.IsEnabled = true;
-                grpProfileOps.IsEnabled = true;
-                progressBar.Value = 0;
-                txtPercentage.Text = "%0.0";
-            }
+
+            // İndirme bittikten sonra butonların kilidini aç
+            btnStart.IsEnabled = true;
+            grpFileOps.IsEnabled = true;
+            grpProfileOps.IsEnabled = true;
         }
 
-        private void LoadProfilesToUI()
+        // --- İNDİRİCİ OLAYLARI ---
+        private void Indirici_IndirmeYuzdesiDegistiginde(double yuzde)
         {
-            cmbProfiles.ItemsSource = null;
-            cmbProfiles.ItemsSource = _profileManager.GetAllProfiles();
-            if (cmbProfiles.Items.Count > 0)
-                cmbProfiles.SelectedIndex = 0;
+            // Arka plan işlemlerinden (indirici) ekrandaki çubuğu güncellemek için Dispatcher kullanmak zorundayız.
+            // Dispatcher, "Arka plandaki işçi, ekrandaki çubuğa dokunamaz, bu yüzden ana ekrana rica eder" mantığıdır.
+            Dispatcher.Invoke(new Action(delegate() 
+            {
+                progressBar.Value = yuzde;
+                txtPercentage.Text = "%" + yuzde.ToString("F1");
+            }));
         }
 
+        private void Indirici_DurumMesajiGeldiginde(string mesaj)
+        {
+            Dispatcher.Invoke(new Action(delegate() 
+            {
+                EkranaMesajYaz(mesaj);
+            }));
+        }
+
+        // --- VİDEO MOTORU OLAYLARI ---
+        private void Motor_IlerlemeDurumuDegistiginde(double yuzde, string gecenSure)
+        {
+            Dispatcher.Invoke(new Action(delegate() 
+            {
+                progressBar.Value = yuzde;
+                txtPercentage.Text = "%" + yuzde.ToString("F1");
+                
+                // Gerçek geçen süreyi hesaplıyoruz (Şu anki saatten - işlemin başladığı saati çıkar)
+                TimeSpan gercekGecenSure = DateTime.Now - _islemBaslangicZamani;
+                txtTime.Text = "Geçen Süre: " + gercekGecenSure.ToString(@"hh\:mm\:ss");
+            }));
+        }
+
+        private void Motor_BilgiMesajiGeldiginde(string mesaj)
+        {
+            Dispatcher.Invoke(new Action(delegate() 
+            {
+                if (!mesaj.StartsWith("frame=")) // Ekrana çok fazla yazı dolmasın diye gereksizleri süzüyoruz
+                {
+                    EkranaMesajYaz(mesaj);
+                }
+            }));
+        }
+
+        // --- EKRAN YARDIMCI METOTLARI ---
+        private void ProfilleriEkranaYukle()
+        {
+            // Listeyi temizleyip yeniden dolduruyoruz
+            cmbProfiles.ItemsSource = null;
+            cmbProfiles.ItemsSource = _profilYoneticisi.GetAllProfiles();
+            
+            // Eğer listede en az bir profil varsa, ilkini otomatik seçili yap
+            if (cmbProfiles.Items.Count > 0)
+            {
+                cmbProfiles.SelectedIndex = 0;
+            }
+        }
+
+        private void EkranaMesajYaz(string mesaj)
+        {
+            // Mesajın başına saati ekleyip kutuya yazdırıyoruz
+            txtLog.AppendText("[" + DateTime.Now.ToShortTimeString() + "] " + mesaj + "\n");
+            txtLog.ScrollToEnd(); // Otomatik olarak en aşağı kaydır
+        }
+
+        // --- BUTON TIKLAMA OLAYLARI ---
+
+        // Listeden farklı bir profil seçildiğinde burası çalışır
         private void CmbProfiles_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (cmbProfiles.SelectedItem is CompressionProfile profile)
+            // Seçilen öğeyi CompressionProfile olarak al
+            CompressionProfile secilenProfil = (CompressionProfile)cmbProfiles.SelectedItem;
+            
+            if (secilenProfil != null)
             {
-                txtProfileName.Text = profile.ProfileName;
-                txtResolution.Text = profile.Resolution;
-                txtBitrate.Text = profile.Bitrate.ToString();
-                txtFps.Text = profile.Fps.ToString();
+                txtProfileName.Text = secilenProfil.ProfilAdi;
+                txtResolution.Text = secilenProfil.Cozunurluk;
+                txtBitrate.Text = secilenProfil.Bitrate.ToString();
+                txtFps.Text = secilenProfil.Fps.ToString();
+
+                // Kodek bilgisini kutuda seçili hale getir
+                if (secilenProfil.VideoKodek == "libx265") cmbCodec.SelectedIndex = 1;
+                else if (secilenProfil.VideoKodek == "libaom-av1") cmbCodec.SelectedIndex = 2;
+                else cmbCodec.SelectedIndex = 0; // Varsayılan H264
+
+                // Hız (Preset) bilgisini kutuda seçili hale getir
+                if (secilenProfil.HizOnayari == "ultrafast") cmbPreset.SelectedIndex = 0;
+                else if (secilenProfil.HizOnayari == "fast") cmbPreset.SelectedIndex = 1;
+                else if (secilenProfil.HizOnayari == "slow") cmbPreset.SelectedIndex = 3;
+                else cmbPreset.SelectedIndex = 2; // Varsayılan medium
             }
         }
 
         private void BtnNewProfile_Click(object sender, RoutedEventArgs e)
         {
+            // Seçimi iptal et ve kutuları varsayılan değerlerle doldur
             cmbProfiles.SelectedIndex = -1;
             txtProfileName.Text = "Yeni Profil";
             txtResolution.Text = "1920x1080";
             txtBitrate.Text = "2000";
             txtFps.Text = "30";
+            cmbCodec.SelectedIndex = 0;
+            cmbPreset.SelectedIndex = 2;
         }
 
         private void BtnSaveProfile_Click(object sender, RoutedEventArgs e)
         {
-            if (!int.TryParse(txtBitrate.Text, out int bitrate) || !int.TryParse(txtFps.Text, out int fps))
+            // Kullanıcının girdiği yazıları sayıya çevirmeye çalışıyoruz
+            int bitrate = 0;
+            int fps = 0;
+            bool bitrateDogruMu = int.TryParse(txtBitrate.Text, out bitrate);
+            bool fpsDogruMu = int.TryParse(txtFps.Text, out fps);
+
+            if (bitrateDogruMu == false || fpsDogruMu == false)
             {
-                MessageBox.Show("Bitrate ve FPS sadece sayı olmalıdır.", "Hata", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                MessageBox.Show("Bitrate ve FPS alanlarına sadece sayı girmelisiniz!");
+                return; // Hatayı göster ve metodu burada durdur
             }
 
-            if (cmbProfiles.SelectedItem is CompressionProfile selectedProfile)
+            // Seçili Kodek (Video Formatı) bilgisini al
+            System.Windows.Controls.ComboBoxItem secilenCodecKutusu = (System.Windows.Controls.ComboBoxItem)cmbCodec.SelectedItem;
+            string codecYazisi = secilenCodecKutusu.Content.ToString();
+            string kodekDegeri = "libx264"; // Varsayılan
+            if (codecYazisi.Contains("H265")) kodekDegeri = "libx265";
+            if (codecYazisi.Contains("AV1")) kodekDegeri = "libaom-av1";
+
+            // Seçili Hız (Preset) bilgisini al
+            System.Windows.Controls.ComboBoxItem secilenHizKutusu = (System.Windows.Controls.ComboBoxItem)cmbPreset.SelectedItem;
+            string hizYazisi = secilenHizKutusu.Content.ToString();
+            string hizDegeri = "medium";
+            if (hizYazisi.Contains("Çok Hızlı")) hizDegeri = "ultrafast";
+            else if (hizYazisi.Contains("Hızlı")) hizDegeri = "fast";
+            else if (hizYazisi.Contains("Yavaş")) hizDegeri = "slow";
+
+            CompressionProfile secilenProfil = (CompressionProfile)cmbProfiles.SelectedItem;
+
+            if (secilenProfil != null)
             {
-                // Güncelle (Update)
-                selectedProfile.ProfileName = txtProfileName.Text;
-                selectedProfile.Resolution = txtResolution.Text;
-                selectedProfile.Bitrate = bitrate;
-                selectedProfile.Fps = fps;
-                _profileManager.UpdateProfile(selectedProfile);
-                MessageBox.Show("Profil başarıyla güncellendi.");
+                // Eğer listeden biri seçiliyse, onu güncelle
+                secilenProfil.ProfilAdi = txtProfileName.Text;
+                secilenProfil.Cozunurluk = txtResolution.Text;
+                secilenProfil.Bitrate = bitrate;
+                secilenProfil.Fps = fps;
+                secilenProfil.VideoKodek = kodekDegeri;
+                secilenProfil.HizOnayari = hizDegeri;
+                
+                _profilYoneticisi.UpdateProfile(secilenProfil);
+                MessageBox.Show("Profil güncellendi.");
             }
             else
             {
-                // Yeni Ekle (Create)
-                var newProfile = new CompressionProfile
-                {
-                    ProfileName = txtProfileName.Text,
-                    Resolution = txtResolution.Text,
-                    Bitrate = bitrate,
-                    Fps = fps
-                };
-                _profileManager.AddProfile(newProfile);
-                MessageBox.Show("Yeni profil başarıyla eklendi.");
+                // Eğer listeden biri seçili değilse, yeni bir tane oluştur
+                CompressionProfile yeniProfil = new CompressionProfile();
+                yeniProfil.ProfilAdi = txtProfileName.Text;
+                yeniProfil.Cozunurluk = txtResolution.Text;
+                yeniProfil.Bitrate = bitrate;
+                yeniProfil.Fps = fps;
+                yeniProfil.VideoKodek = kodekDegeri;
+                yeniProfil.HizOnayari = hizDegeri;
+
+                _profilYoneticisi.AddProfile(yeniProfil);
+                MessageBox.Show("Yeni profil kaydedildi.");
             }
-            LoadProfilesToUI();
+
+            // Listeyi yenile
+            ProfilleriEkranaYukle();
             
-            // Yeni eklenen profili ComboBox'ta seçili hale getirmek için klasik döngü kullanıyoruz
-            List<CompressionProfile> tumProfiller = _profileManager.GetAllProfiles();
+            // Yeni eklenen profili listede seçili hale getirmek için
+            List<CompressionProfile> tumProfiller = _profilYoneticisi.GetAllProfiles();
             for (int i = 0; i < tumProfiller.Count; i++)
             {
-                if (tumProfiller[i].ProfileName == txtProfileName.Text)
+                if (tumProfiller[i].ProfilAdi == txtProfileName.Text)
                 {
                     cmbProfiles.SelectedItem = tumProfiller[i];
                 }
@@ -149,143 +247,151 @@ namespace FfmpegWrapper
 
         private void BtnDeleteProfile_Click(object sender, RoutedEventArgs e)
         {
-            if (cmbProfiles.SelectedItem is CompressionProfile selectedProfile)
+            CompressionProfile secilenProfil = (CompressionProfile)cmbProfiles.SelectedItem;
+
+            if (secilenProfil != null)
             {
-                var result = MessageBox.Show($"{selectedProfile.ProfileName} silinecek, emin misiniz?", "Onay", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result == MessageBoxResult.Yes)
+                // Silmeden önce emin misin diye sor
+                MessageBoxResult cevap = MessageBox.Show(secilenProfil.ProfilAdi + " silinecek, emin misiniz?", "Soru", MessageBoxButton.YesNo);
+                
+                if (cevap == MessageBoxResult.Yes)
                 {
-                    _profileManager.DeleteProfile(selectedProfile.Id);
-                    LoadProfilesToUI();
+                    _profilYoneticisi.DeleteProfile(secilenProfil.IdyiGetir());
+                    ProfilleriEkranaYukle();
+                }
+            }
+        }
+
+        private void VideoyuAyarla(string dosyaYolu)
+        {
+            try
+            {
+                // Kullanıcının seçtiği veya sürüklediği dosyayı kullanarak VideoFile sınıfından bir örnek oluşturuyoruz
+                _secilenVideo = new VideoFile(dosyaYolu);
+                txtInputFile.Text = _secilenVideo.DosyaYolu;
+                
+                // Seçilen videonun bulunduğu klasörü, otomatik olarak çıktı klasörü yapıyoruz
+                _secilenKlasor = System.IO.Path.GetDirectoryName(_secilenVideo.DosyaYolu);
+                txtOutputDir.Text = _secilenKlasor;
+                
+                EkranaMesajYaz("Dosya Seçildi: " + _secilenVideo.AciklamaGetir());
+            }
+            catch (Exception hata)
+            {
+                MessageBox.Show("Dosya açılırken hata oluştu: " + hata.Message);
+            }
+        }
+
+        private void Pencere_DosyaBirakildiginda(object sender, DragEventArgs e)
+        {
+            // Sürüklenen şey bir dosya mı kontrol ediyoruz
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                // Bilgisayardan sürüklenen dosyaların yolunu liste olarak alıyoruz
+                string[] dosyalar = (string[])e.Data.GetData(DataFormats.FileDrop);
+                
+                if (dosyalar.Length > 0)
+                {
+                    // İlk sürüklenen dosyayı al ve programa tanıt
+                    VideoyuAyarla(dosyalar[0]);
                 }
             }
         }
 
         private void BtnSelectFile_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog
-            {
-                Filter = "Video Dosyaları|*.mp4;*.mkv;*.avi;*.mov",
-                Title = "Sıkıştırılacak Videoyu Seçin"
-            };
+            // Windows'un standart dosya seçme penceresi
+            OpenFileDialog dosyaPenceresi = new OpenFileDialog();
+            dosyaPenceresi.Filter = "Video Dosyaları|*.mp4;*.mkv;*.avi;*.mov";
+            dosyaPenceresi.Title = "Sıkıştırılacak Videoyu Seçin";
 
-            if (openFileDialog.ShowDialog() == true)
+            bool? sonuc = dosyaPenceresi.ShowDialog();
+
+            if (sonuc == true)
             {
-                try
-                {
-                    _currentVideo = new VideoFile(openFileDialog.FileName);
-                    txtInputFile.Text = _currentVideo.FilePath;
-                    
-                    // Otomatik olarak dosyanın bulunduğu klasörü çıktı olarak belirle
-                    _outputDirectory = System.IO.Path.GetDirectoryName(_currentVideo.FilePath);
-                    txtOutputDir.Text = _outputDirectory;
-                    
-                    LogToUI("Dosya Seçildi: " + _currentVideo.GetMediaDescription());
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message, "Dosya Hatası", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                VideoyuAyarla(dosyaPenceresi.FileName);
             }
         }
 
         private void BtnSelectOutputDir_Click(object sender, RoutedEventArgs e)
         {
-            // .NET 8 WPF ile gelen OpenFolderDialog
-            OpenFolderDialog openFolderDialog = new OpenFolderDialog
-            {
-                Title = "Çıktı Klasörünü Seçin"
-            };
+            // Çıktı için klasör seçme penceresi
+            OpenFolderDialog klasorPenceresi = new OpenFolderDialog();
+            klasorPenceresi.Title = "Nereye Kaydedilecek?";
 
-            if (openFolderDialog.ShowDialog() == true)
+            if (klasorPenceresi.ShowDialog() == true)
             {
-                _outputDirectory = openFolderDialog.FolderName;
-                txtOutputDir.Text = _outputDirectory;
+                _secilenKlasor = klasorPenceresi.FolderName;
+                txtOutputDir.Text = _secilenKlasor;
             }
         }
 
         private async void BtnStart_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentVideo == null)
+            if (_secilenVideo == null)
             {
-                MessageBox.Show("Lütfen önce bir video seçin.", "Uyarı", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Lütfen önce bir video seçin!");
                 return;
             }
 
-            if (!int.TryParse(txtBitrate.Text, out int bitrate) || !int.TryParse(txtFps.Text, out int fps))
+            int bitrate = 0;
+            int fps = 0;
+            if (!int.TryParse(txtBitrate.Text, out bitrate) || !int.TryParse(txtFps.Text, out fps))
             {
-                MessageBox.Show("Lütfen geçerli değerler girin.", "Uyarı", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("FPS veya Bitrate sayı olmalıdır!");
                 return;
             }
 
-            var activeProfile = new CompressionProfile
-            {
-                Resolution = txtResolution.Text,
-                Bitrate = bitrate,
-                Fps = fps
-            };
+            // O anki ekrandaki ayarları alıp geçici bir profil yapıyoruz
+            CompressionProfile seciliAyarlar = new CompressionProfile();
+            seciliAyarlar.Cozunurluk = txtResolution.Text;
+            seciliAyarlar.Bitrate = bitrate;
+            seciliAyarlar.Fps = fps;
 
-            btnStart.IsEnabled = false;
+            // Seçili Kodek bilgisini al
+            System.Windows.Controls.ComboBoxItem secilenCodecKutusu = (System.Windows.Controls.ComboBoxItem)cmbCodec.SelectedItem;
+            string codecYazisi = secilenCodecKutusu.Content.ToString();
+            string kodekDegeri = "libx264";
+            if (codecYazisi.Contains("H265")) kodekDegeri = "libx265";
+            if (codecYazisi.Contains("AV1")) kodekDegeri = "libaom-av1";
+
+            // Seçili Hız bilgisini al
+            System.Windows.Controls.ComboBoxItem secilenHizKutusu = (System.Windows.Controls.ComboBoxItem)cmbPreset.SelectedItem;
+            string hizYazisi = secilenHizKutusu.Content.ToString();
+            string hizDegeri = "medium";
+            if (hizYazisi.Contains("Çok Hızlı")) hizDegeri = "ultrafast";
+            else if (hizYazisi.Contains("Hızlı")) hizDegeri = "fast";
+            else if (hizYazisi.Contains("Yavaş")) hizDegeri = "slow";
+
+            seciliAyarlar.VideoKodek = kodekDegeri;
+            seciliAyarlar.HizOnayari = hizDegeri;
+
+            btnStart.IsEnabled = false; // İşlem bitene kadar tekrar basılmasını engelle
             progressBar.Value = 0;
-            txtPercentage.Text = "%0.0";
-            txtTime.Text = "Geçen Süre: 00:00:00";
-            _stopwatch.Restart();
-            _timer.Start();
-            LogToUI("--- SIKIŞTIRMA İŞLEMİ BAŞLADI ---");
-            LogToUI($"Hedef Çözünürlük: {activeProfile.Resolution}, Bitrate: {activeProfile.Bitrate}k, FPS: {activeProfile.Fps}");
+            txtTime.Text = "Geçen Süre: Başlıyor...";
+            _islemBaslangicZamani = DateTime.Now; // Sayacı sıfırla
+            
+            EkranaMesajYaz("--- SIKIŞTIRMA BAŞLADI ---");
 
             try
             {
-                string finalPath = await _ffmpegEngine.CompressVideoAsync(_currentVideo, _outputDirectory, activeProfile);
+                // VideoyuSikistirAsync metodu çalışırken arayüzün donmaması için 'await' kullanıyoruz.
+                string yeniDosya = await _videoMotoru.VideoyuSikistirAsync(_secilenVideo, _secilenKlasor, seciliAyarlar);
                 
-                // İşlem biter bitmez süreyi durdur (Kullanıcının mesaja tıklamasını beklemeden)
-                _stopwatch.Stop();
-                _timer.Stop();
-                
-                LogToUI("--- İŞLEM BAŞARIYLA TAMAMLANDI ---");
-                MessageBox.Show("Sıkıştırma işlemi başarıyla tamamlandı!\n\nKaydedilen Dosya:\n" + finalPath, "Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
+                EkranaMesajYaz("--- İŞLEM BİTTİ ---");
+                MessageBox.Show("Sıkıştırma tamamlandı!\nKaydedilen Yer:\n" + yeniDosya);
             }
-            catch (Exception ex)
+            catch (Exception hata)
             {
-                _stopwatch.Stop();
-                _timer.Stop();
-                
-                LogToUI($"HATA: {ex.Message}");
-                MessageBox.Show(ex.Message, "İşlem Hatası", MessageBoxButton.OK, MessageBoxImage.Error);
+                EkranaMesajYaz("HATA OLUŞTU: " + hata.Message);
+                MessageBox.Show("İşlem sırasında hata oluştu: " + hata.Message);
             }
             finally
             {
-                _stopwatch.Stop();
-                _timer.Stop();
+                // İşlem başarılı da olsa hata da verse, butonu tekrar aktif et
                 btnStart.IsEnabled = true;
+                txtTime.Text = "Durum: Bitti";
             }
-        }
-
-        private void FfmpegEngine_OnProgressChanged(double percentage, string currentTime)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                progressBar.Value = percentage;
-                txtPercentage.Text = $"%{percentage:F1}";
-            });
-        }
-
-        private void FfmpegEngine_OnLogReceived(string log)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                // Frame ile başlayan spam logları konsolu şişirmesin diye filtreleyebiliriz.
-                // İsteğe bağlı olarak sadece önemli hataları veya duration loglarını bırakabilirsiniz.
-                if (!log.StartsWith("frame="))
-                {
-                    LogToUI(log);
-                }
-            });
-        }
-
-        private void LogToUI(string message)
-        {
-            txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\n");
-            txtLog.ScrollToEnd();
         }
     }
 }

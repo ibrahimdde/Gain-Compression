@@ -2,56 +2,50 @@ using System;
 
 namespace FfmpegWrapper.Models
 {
+    // Bu sınıf, video sıkıştırma ayarlarını (profilini) tutmak için bir şablondur.
     public class CompressionProfile
     {
-        // 1. Sınıf seviyesi klasik Kapsülleme (Encapsulation) - Gizli (Private) Alanlar
-        private string _id;
-        private string _profileName;
-        private string _resolution;
-        private int _bitrate;
-        private int _fps;
+        // ÖĞRENCİ NOTU: Encapsulation (Kapsülleme) Örneği
+        // Sadece ID (kimlik) değişkenini gizli (private) yapıyoruz.
+        // Dışarıdan doğrudan değiştirilemez, sadece bizim yazdığımız metotla okunabilir.
+        private string gizliId;
 
-        // Kurucu Metot (Constructor)
+        // Herkesin erişebileceği (public) normal değişkenlerimiz (Alanlar / Properties)
+        // WPF ekranlarının bunları görebilmesi için { get; set; } ekliyoruz.
+        public string ProfilAdi { get; set; }
+        public string Cozunurluk { get; set; }
+        public int Bitrate { get; set; } // Veri akım hızı
+        public int Fps { get; set; } // Saniyedeki kare hızı
+        public string VideoKodek { get; set; } // H264, H265, AV1
+        public string HizOnayari { get; set; } // fast, slow vb.
+
+        // Kurucu Metot: Yeni bir profil oluşturulduğunda ilk çalışan kod.
         public CompressionProfile()
         {
-            _id = Guid.NewGuid().ToString();
+            // Yeni oluşturulan her profile otomatik olarak benzersiz bir kimlik veriyoruz.
+            gizliId = Guid.NewGuid().ToString();
         }
 
-        // Açık (Public) Erişim Metotları (Getter ve Setter)
-        public string Id
+        // Gizli olan ID'yi dışarıdan okumak için bir metot yazıyoruz.
+        // Dışarıdan kimse ID'yi değiştiremez, sadece okuyabilir. (Kapsülleme amacı budur)
+        public string IdyiGetir()
         {
-            get { return _id; }
-            set { _id = value; }
+            return gizliId;
         }
 
-        public string ProfileName
+        // Girilen değerlerin mantıklı olup olmadığını kontrol eden basit bir metot.
+        public bool GecerliMi()
         {
-            get { return _profileName; }
-            set { _profileName = value; }
-        }
-
-        public string Resolution
-        {
-            get { return _resolution; }
-            set { _resolution = value; }
-        }
-
-        public int Bitrate
-        {
-            get { return _bitrate; }
-            set { _bitrate = value; }
-        }
-
-        public int Fps
-        {
-            get { return _fps; }
-            set { _fps = value; }
-        }
-
-        // Encapsulation (Kapsülleme) örneği: Profil geçerliliğini kontrol etme
-        public bool IsValid()
-        {
-            return !string.IsNullOrWhiteSpace(ProfileName) && Bitrate > 0 && Fps > 0;
+            // Eğer profil adı boş değilse ve diğer sayılar 0'dan büyükse her şey yolunda demektir.
+            if (ProfilAdi != "" && Bitrate > 0 && Fps > 0 && VideoKodek != "" && HizOnayari != "")
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
     }
 }
+

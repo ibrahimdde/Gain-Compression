@@ -1,0 +1,18 @@
+[
+  {
+    "ProfilAdi": "Varsay\u0131lan",
+    "Cozunurluk": "1920x1080",
+    "Bitrate": 4000,
+    "Fps": 30,
+    "VideoKodek": "libx264",
+    "HizOnayari": "medium"
+  },
+  {
+    "ProfilAdi": "D\u00FC\u015F\u00FCk Boyut",
+    "Cozunurluk": "1280x720",
+    "Bitrate": 1500,
+    "Fps": 24,
+    "VideoKodek": "libx265",
+    "HizOnayari": "fast"
+  }
+]

@@ -7,99 +7,114 @@ using System.Threading.Tasks;
 
 namespace FfmpegWrapper.Services
 {
+    // Bu sınıf, programın çalışması için gereken "FFmpeg" uygulamasını internetten indirmek için var.
     public class FfmpegDownloader
     {
-        // Güvenilir GitHub kaynağından FFMPEG Windows derlemesi
-        private const string FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+        // FFmpeg'in indirileceği güvenli adres.
+        private const string IndirmeAdresi = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
         
-        public event Action<double> OnDownloadProgressChanged;
-        public event Action<string> OnDownloadStatusChanged;
+        // Ekrana bilgi göndermek için olaylar (Event) tanımlıyoruz.
+        public event Action<double> IndirmeYuzdesiDegistiginde;
+        public event Action<string> DurumMesajiGeldiginde;
 
-        public async Task DownloadFfmpegIfNeededAsync()
+        // FFmpeg eksikse indirme işlemini başlatan metot.
+        public async Task FfmpegYoksaIndirAsync()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string ffmpegDir = Path.Combine(baseDir, "ffmpeg");
-            string ffmpegExe = Path.Combine(ffmpegDir, "ffmpeg.exe");
+            // Programımızın çalıştığı klasörü buluyoruz.
+            string anaKlasor = AppDomain.CurrentDomain.BaseDirectory;
+            string ffmpegKlasoru = Path.Combine(anaKlasor, "ffmpeg");
+            string ffmpegProgrami = Path.Combine(ffmpegKlasoru, "ffmpeg.exe");
 
-            // Eğer ffmpeg.exe mevcutsa indirmeye gerek yok
-            if (File.Exists(ffmpegExe))
+            // Eğer "ffmpeg.exe" zaten bilgisayarda varsa, hiçbir şey yapmadan metottan çık (return).
+            if (File.Exists(ffmpegProgrami))
             {
                 return; 
             }
 
-            OnDownloadStatusChanged?.Invoke("Sistemde FFMPEG bulunamadı. İlk kurulum için indiriliyor (Lütfen bekleyin)...");
+            // Arayüze mesaj gönder:
+            DurumMesajiGeldiginde?.Invoke("Gerekli araçlar (FFmpeg) bulunamadı. Sizin için otomatik indiriliyor, lütfen bekleyin...");
 
-            if (!Directory.Exists(ffmpegDir))
+            // Klasör yoksa oluştur.
+            if (!Directory.Exists(ffmpegKlasoru))
             {
-                Directory.CreateDirectory(ffmpegDir);
+                Directory.CreateDirectory(ffmpegKlasoru);
             }
 
-            string zipPath = Path.Combine(baseDir, "ffmpeg_temp.zip");
-            string extractPath = Path.Combine(baseDir, "ffmpeg_extracted");
+            // İndireceğimiz arşiv (zip) dosyası ve onu çıkartacağımız geçici klasör.
+            string zipDosyasi = Path.Combine(anaKlasor, "ffmpeg_temp.zip");
+            string cikartmaKlasoru = Path.Combine(anaKlasor, "ffmpeg_extracted");
 
             try
             {
-                using (var client = new HttpClient())
+                // İnternetten dosya indirmek için HttpClient kullanıyoruz.
+                using (var internetBaglantisi = new HttpClient())
                 {
-                    client.DefaultRequestHeaders.Add("User-Agent", "FfmpegWrapper/1.0");
+                    // Bazı siteler robot olduğumuzu sanmasın diye tarayıcı kimliği gönderiyoruz.
+                    internetBaglantisi.DefaultRequestHeaders.Add("User-Agent", "OgrenciUygulamasi/1.0");
 
-                    using (var response = await client.GetAsync(FfmpegUrl, HttpCompletionOption.ResponseHeadersRead))
+                    // İndirme isteği gönderiyoruz.
+                    using (var cevap = await internetBaglantisi.GetAsync(IndirmeAdresi, HttpCompletionOption.ResponseHeadersRead))
                     {
-                        response.EnsureSuccessStatusCode();
+                        cevap.EnsureSuccessStatusCode(); // Hata varsa (Örn: 404 Not Found) programı durdurur ve hataya düşer.
 
-                        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-                        var canReportProgress = totalBytes != -1;
+                        var toplamBoyut = cevap.Content.Headers.ContentLength ?? -1L; // Dosyanın toplam boyutu
+                        var yuzdeHesaplanabilirMi = toplamBoyut != -1;
 
-                        using (var contentStream = await response.Content.ReadAsStreamAsync())
-                        using (var fileStream = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                        // Dosyayı yavaş yavaş okuyup (stream), kendi bilgisayarımıza yazıyoruz.
+                        using (var gelenVeriAkisi = await cevap.Content.ReadAsStreamAsync())
+                        using (var dosyaYazici = new FileStream(zipDosyasi, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
                         {
-                            var buffer = new byte[8192];
-                            long totalRead = 0;
-                            int bytesRead;
+                            var paket = new byte[8192];
+                            long okunanToplam = 0;
+                            int okunanPaketBoyutu;
 
-                            while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                            // Veri akışı bitene kadar döngüye devam et (İndirme işlemi)
+                            while ((okunanPaketBoyutu = await gelenVeriAkisi.ReadAsync(paket, 0, paket.Length)) != 0)
                             {
-                                await fileStream.WriteAsync(buffer, 0, bytesRead);
-                                totalRead += bytesRead;
+                                await dosyaYazici.WriteAsync(paket, 0, okunanPaketBoyutu);
+                                okunanToplam += okunanPaketBoyutu;
 
-                                if (canReportProgress)
+                                // İndirme yüzdesini hesaplayıp ekrana gönderiyoruz.
+                                if (yuzdeHesaplanabilirMi)
                                 {
-                                    double progress = (double)totalRead / totalBytes * 100;
-                                    OnDownloadProgressChanged?.Invoke(progress);
+                                    double yuzde = (double)okunanToplam / toplamBoyut * 100;
+                                    IndirmeYuzdesiDegistiginde?.Invoke(yuzde);
                                 }
                             }
                         }
                     }
                 }
 
-                OnDownloadStatusChanged?.Invoke("İndirme tamamlandı. Dosyalar arşivden çıkarılıyor...");
+                DurumMesajiGeldiginde?.Invoke("İndirme tamamlandı. Dosyalar arşivden (zip) çıkarılıyor...");
 
-                // Çıkarma işlemi için klasör hazırlığı
-                if (Directory.Exists(extractPath))
-                    Directory.Delete(extractPath, true);
+                // Eski bir klasör varsa temizle.
+                if (Directory.Exists(cikartmaKlasoru))
+                    Directory.Delete(cikartmaKlasoru, true);
 
-                ZipFile.ExtractToDirectory(zipPath, extractPath);
+                // Zip dosyasını klasöre çıkart.
+                ZipFile.ExtractToDirectory(zipDosyasi, cikartmaKlasoru);
 
-                // Çıkarılan klasörlerin içinde ffmpeg.exe dosyasını bul (alt klasörlerde olabilir)
-                var extractedExePath = Directory.GetFiles(extractPath, "ffmpeg.exe", SearchOption.AllDirectories).FirstOrDefault();
+                // Çıkarılan klasörlerin içinde "ffmpeg.exe" dosyasının tam yerini bul.
+                var bulunanProgram = Directory.GetFiles(cikartmaKlasoru, "ffmpeg.exe", SearchOption.AllDirectories).FirstOrDefault();
                 
-                if (extractedExePath != null)
+                if (bulunanProgram != null)
                 {
-                    File.Copy(extractedExePath, ffmpegExe, true);
+                    File.Copy(bulunanProgram, ffmpegProgrami, true); // Dosyayı asıl olması gereken yere kopyala.
                 }
                 else
                 {
-                    throw new FileNotFoundException("İndirilen arşivin içerisinde ffmpeg.exe bulunamadı!");
+                    throw new FileNotFoundException("İndirilen dosyanın içinden ffmpeg.exe çıkmadı!");
                 }
 
-                OnDownloadStatusChanged?.Invoke("Kurulum Başarılı! Uygulama kullanıma hazır.");
+                DurumMesajiGeldiginde?.Invoke("Kurulum Başarılı! Uygulama kullanılmaya hazır.");
             }
             finally
             {
-                // İşlem başarılı da olsa hata da verse çöp (geçici) dosyaları temizle
-                OnDownloadStatusChanged?.Invoke("Geçici dosyalar temizleniyor...");
-                try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch { }
-                try { if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true); } catch { }
+                // İşlem başarılı da olsa, hata da verse çöpleri (geçici dosyaları) temizliyoruz.
+                // try-catch koyuyoruz ki dosyalar kullanımda vs. olursa hata fırlatmasın.
+                DurumMesajiGeldiginde?.Invoke("Geçici dosyalar temizleniyor...");
+                try { if (File.Exists(zipDosyasi)) File.Delete(zipDosyasi); } catch { }
+                try { if (Directory.Exists(cikartmaKlasoru)) Directory.Delete(cikartmaKlasoru, true); } catch { }
             }
         }
     }
