@@ -17,7 +17,11 @@ namespace FfmpegWrapper.Services
             LoadProfiles();
         }
 
-        public List<CompressionProfile> GetAllProfiles() => _profiles;
+        // Tüm profilleri getiren metod
+        public List<CompressionProfile> GetAllProfiles()
+        {
+            return _profiles;
+        }
 
         public void AddProfile(CompressionProfile profile)
         {
@@ -25,26 +29,35 @@ namespace FfmpegWrapper.Services
             SaveProfiles();
         }
 
+        // Güncelleme işlemi (Update)
         public void UpdateProfile(CompressionProfile updatedProfile)
         {
-            var existing = _profiles.FirstOrDefault(p => p.Id == updatedProfile.Id);
-            if (existing != null)
+            // LINQ yerine klasik for döngüsü (1. sınıf mantığı)
+            for (int i = 0; i < _profiles.Count; i++)
             {
-                existing.ProfileName = updatedProfile.ProfileName;
-                existing.Resolution = updatedProfile.Resolution;
-                existing.Bitrate = updatedProfile.Bitrate;
-                existing.Fps = updatedProfile.Fps;
-                SaveProfiles();
+                if (_profiles[i].Id == updatedProfile.Id)
+                {
+                    _profiles[i].ProfileName = updatedProfile.ProfileName;
+                    _profiles[i].Resolution = updatedProfile.Resolution;
+                    _profiles[i].Bitrate = updatedProfile.Bitrate;
+                    _profiles[i].Fps = updatedProfile.Fps;
+                    SaveProfiles();
+                    break; // Bulduk ve güncelledik, döngüyü bitir
+                }
             }
         }
 
+        // Silme işlemi (Delete)
         public void DeleteProfile(string id)
         {
-            var profile = _profiles.FirstOrDefault(p => p.Id == id);
-            if (profile != null)
+            for (int i = 0; i < _profiles.Count; i++)
             {
-                _profiles.Remove(profile);
-                SaveProfiles();
+                if (_profiles[i].Id == id)
+                {
+                    _profiles.RemoveAt(i); // Listeden çıkar
+                    SaveProfiles();
+                    break; // Bulduk ve sildik, döngüyü bitir
+                }
             }
         }
 
@@ -53,7 +66,12 @@ namespace FfmpegWrapper.Services
             if (File.Exists(_filePath))
             {
                 string json = File.ReadAllText(_filePath);
-                _profiles = JsonSerializer.Deserialize<List<CompressionProfile>>(json) ?? new List<CompressionProfile>();
+                _profiles = JsonSerializer.Deserialize<List<CompressionProfile>>(json);
+                
+                if (_profiles == null)
+                {
+                    _profiles = new List<CompressionProfile>();
+                }
             }
             else
             {

@@ -136,8 +136,15 @@ namespace FfmpegWrapper
             }
             LoadProfilesToUI();
             
-            // Yeni eklenen profili seç
-            cmbProfiles.SelectedItem = _profileManager.GetAllProfiles().LastOrDefault(p => p.ProfileName == txtProfileName.Text);
+            // Yeni eklenen profili ComboBox'ta seçili hale getirmek için klasik döngü kullanıyoruz
+            List<CompressionProfile> tumProfiller = _profileManager.GetAllProfiles();
+            for (int i = 0; i < tumProfiller.Count; i++)
+            {
+                if (tumProfiller[i].ProfileName == txtProfileName.Text)
+                {
+                    cmbProfiles.SelectedItem = tumProfiller[i];
+                }
+            }
         }
 
         private void BtnDeleteProfile_Click(object sender, RoutedEventArgs e)

@@ -4,14 +4,51 @@ namespace FfmpegWrapper.Models
 {
     public class CompressionProfile
     {
-        // profil parametrelerin getsetler
-        public string Id { get; set; } = Guid.NewGuid().ToString();
-        public string ProfileName { get; set; }
-        public string Resolution { get; set; } // Örn: 1920x1080
-        public int Bitrate { get; set; } // Örn: 2000 (kbps)
-        public int Fps { get; set; } // Örn: 30
+        // 1. Sınıf seviyesi klasik Kapsülleme (Encapsulation) - Gizli (Private) Alanlar
+        private string _id;
+        private string _profileName;
+        private string _resolution;
+        private int _bitrate;
+        private int _fps;
 
-        // bitrate ve fpse sakat değerler girildi mi checki
+        // Kurucu Metot (Constructor)
+        public CompressionProfile()
+        {
+            _id = Guid.NewGuid().ToString();
+        }
+
+        // Açık (Public) Erişim Metotları (Getter ve Setter)
+        public string Id
+        {
+            get { return _id; }
+            set { _id = value; }
+        }
+
+        public string ProfileName
+        {
+            get { return _profileName; }
+            set { _profileName = value; }
+        }
+
+        public string Resolution
+        {
+            get { return _resolution; }
+            set { _resolution = value; }
+        }
+
+        public int Bitrate
+        {
+            get { return _bitrate; }
+            set { _bitrate = value; }
+        }
+
+        public int Fps
+        {
+            get { return _fps; }
+            set { _fps = value; }
+        }
+
+        // Encapsulation (Kapsülleme) örneği: Profil geçerliliğini kontrol etme
         public bool IsValid()
         {
             return !string.IsNullOrWhiteSpace(ProfileName) && Bitrate > 0 && Fps > 0;
