@@ -16,11 +16,6 @@ namespace FfmpegWrapper.Services
         public event Action<double, string> OnProgressChanged;
         public event Action<string> OnLogReceived;
 
-        public FfmpegEngine()
-        {
-            // FFMPEG yolu program ilk açıldığında henüz indirilmemiş olabilir.
-            // O yüzden burada _ffmpegPath'i değiştirmemeliyiz, FfmpegDownloader onu doğru yere kuracak.
-        }
 
         public async Task<string> CompressVideoAsync(VideoFile inputVideo, string outputDirectory, CompressionProfile profile)
         {

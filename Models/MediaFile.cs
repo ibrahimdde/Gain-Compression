@@ -2,7 +2,6 @@ using System.IO;
 
 namespace FfmpegWrapper.Models
 {
-    // Abstraction (Soyutlama) ve Base Class (Temel Sınıf)
     public abstract class MediaFile
     {
         public string FilePath { get; protected set; }
@@ -21,7 +20,7 @@ namespace FfmpegWrapper.Models
             SizeInBytes = new FileInfo(filePath).Length;
         }
 
-        // Polymorphism (Çok Biçimlilik) için sanal metot
+        
         public abstract string GetMediaDescription();
     }
 }
